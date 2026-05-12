@@ -1,4 +1,5 @@
 package tui
+package tui
 
 import (
 	"os"
