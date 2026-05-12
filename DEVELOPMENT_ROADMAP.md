@@ -42,6 +42,16 @@ Decision: `GO` -> Phase 1 is closed. Work proceeds under Phase 2-4 scope only.
 
 ## Phase 2: TUI Completion (1-2 weeks)
 
+Validation checklist:
+- [x] `task build` passes
+- [x] `task test` passes
+- [x] `task test-coverage` passes
+- [x] Advanced editor fields are available in modal flow
+- [x] Focus shortlist sorting/filtering is active
+- [x] Regression tests cover modal/save/validation/move/overlay flows
+
+Decision: `GO` -> Phase 2 is validated and closed.
+
 ### Priority 1: Advanced Task Editor
 
 Status: done
@@ -70,7 +80,7 @@ Scope:
 
 ### Priority 3: TUI Hardening
 
-Status: in progress
+Status: done
 
 Scope:
 - Add tests for keybinding flows in Tasks/Focus/Logs.
@@ -174,7 +184,6 @@ go test ./internal/rules/... -v
 
 - Notifications currently print to stdout (platform backends not implemented).
 - Recurrence is not yet integrated.
-- TUI hardening suite is still partial (additional Focus/Logs flows to cover).
 - No dedicated daemon process yet.
 
 ## Success Criteria (Updated)

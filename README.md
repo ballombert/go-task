@@ -14,9 +14,12 @@ A cross-platform Go application designed to help people with ADHD manage daily t
 - ✅ Timer state persistence between CLI invocations
 - ✅ Interactive TUI with keyboard navigation and overlays
 
-**Phase 2-4: In Progress**
-- Advanced task editor (multi-field)
-- Task sorting/filtering refinements
+**Phase 2: ✅ Closed (Validated)**
+- ✅ Advanced task editor (multi-field)
+- ✅ Task sorting/filtering refinements
+- ✅ TUI hardening baseline tests
+
+**Phase 3-4: In Progress**
 - Recurrence engine for automatic task generation
 - System notifications (platform-specific)
 
@@ -204,16 +207,15 @@ Per the project spec, gotask follows these core constraints:
 3. Instances appear in inbox with proper due dates
 4. User completes instances, history is logged
 
-## 🐛 Known Limitations (Phase 1)
+## 🐛 Known Limitations (Post-Phase 2)
 
-- Recurrence engine not active (roadmap for Phase 2)
+- Recurrence engine not active (roadmap for Phase 3)
 - Platform-specific notifications are stubs
 - No background daemon for automatic task generation
-- Advanced field editor in TUI not complete (description modal is implemented)
 
 ## 📝 Next Steps (Phase 2-3)
 
-- [ ] Advanced TUI editor (priority, due date, duration, recurrence)
+- [ ] Recurrence fields integration in TUI editor
 - [ ] Recurrence engine and automatic task generation
 - [ ] Real system notifications (go-toast, osascript, d-bus)
 - [ ] Background task evaluation loop

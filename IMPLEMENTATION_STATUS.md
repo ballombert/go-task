@@ -8,6 +8,7 @@
 **Go Version**: 1.21+  
 **Start Date**: 12 May 2026  
 **Phase 1 Closure Date**: 12 May 2026
+**Phase 2 Closure Date**: 12 May 2026
 
 ## ✅ Phase 1: Completed Deliverables
 
@@ -114,7 +115,7 @@
 ✅ Generate deterministic interventions  
 ✅ Track time spent on tasks  
 
-## ⚠️ Known Limitations (Phase 1)
+## ⚠️ Known Limitations (Post-Phase 2)
 
 ### Not Yet Implemented
 - ❌ Recurrence engine (automatic task generation)
@@ -122,7 +123,7 @@
 - ❌ System notifications (platform-specific implementations)
 - ❌ Focus/anti-distraction rules
 - ❌ Time tracking analytics
-- ❌ Advanced multi-field editor (priority/due date/duration/recurrence)
+- ❌ Recurrence fields integration in TUI editor
 
 ### Design Decisions Made
 1. **Single Timer**: Only one active timer at a time (per spec)
@@ -134,31 +135,28 @@
 ## 📈 Next Steps (Phase 2-3)
 
 ### Priority 1 (High Impact)
-1. [ ] Implement full TUI keyboard navigation (j/k, Enter, Esc, etc.)
-2. [ ] Add task editing and reordering in TUI
-3. [ ] Implement recurrence engine with automatic instance generation
-4. [ ] Create background task evaluation loop (rule engine + interventions)
+1. [ ] Implement recurrence engine with automatic instance generation
+2. [ ] Create background task evaluation loop (rule engine + interventions)
 
 ### Priority 2 (Medium)
-5. [ ] Real system notifications (go-toast Windows, osascript macOS, d-bus Linux)
-6. [ ] Timer countdown animation in TUI with progress bar
-7. [ ] Focus detection and anti-distraction rules
-8. [ ] Time tracking analytics and reports
+3. [ ] Real system notifications (go-toast Windows, osascript macOS, d-bus Linux)
+4. [ ] Focus detection and anti-distraction rules
+5. [ ] Time tracking analytics and reports
 
 ### Priority 3 (Polish)
-9. [ ] Configuration file support (~/.gotask/config.yaml)
-10. [ ] Custom inbox path support
-11. [ ] Plugin system for custom rules
-12. [ ] Terminal color theme customization
-13. [ ] Export to PDF/JSON reports
+6. [ ] Configuration file support (~/.gotask/config.yaml)
+7. [ ] Custom inbox path support
+8. [ ] Plugin system for custom rules
+9. [ ] Terminal color theme customization
+10. [ ] Export to PDF/JSON reports
 
 ## 🧪 Testing Coverage
 
 - ✅ CLI command sanity tests (test.sh)
 - ✅ Manual testing of all implemented commands
 - ✅ Cross-platform build verification (setup ready for Windows/macOS/Linux)
-- ⚠️ Unit tests not yet written (defer to Phase 2)
-- ⚠️ TUI interaction tests blocked by incomplete implementation
+- ✅ TUI regression tests written (modal/save/validation/move/overlay)
+- ⚠️ Coverage currently concentrated in internal/tui
 
 ## 📁 Build Artifacts
 
@@ -194,7 +192,7 @@ The implementation strictly follows the product spec from [docs/objectif.md](doc
 1. Read `docs/objectif.md` first (2 minutes)
 2. Review [README.md](README.md) and this file (5 minutes)
 3. Run `task build && task test` to verify setup (2 minutes)
-4. Pick a remaining Phase 2 task (advanced editor, sorting/filtering, recurrence)
+4. Pick a remaining Phase 3 task (recurrence, notifications, daemon)
 5. Reference original [docs/cli.md](docs/cli.md) for behavior specs
 
 ## ✨ Highlights
@@ -215,6 +213,6 @@ The implementation strictly follows the product spec from [docs/objectif.md](doc
 
 ---
 
-**Status**: ✅ **Phase 1 CLOSED** - Foundation validated, Phase 2 execution in progress  
+**Status**: ✅ **Phase 1-2 CLOSED** - Foundation and TUI completion validated  
 **Effort**: ~16-20 hours of development  
 **Code Quality**: Production-ready foundation, ready for incremental enhancement
