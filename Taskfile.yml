@@ -1,0 +1,191 @@
+version: '3'
+
+vars:
+  BINARY_NAME: gotask
+  OUTPUT_DIR: dist
+  MAIN_PACKAGE: ./cmd/gotask
+
+tasks:
+  default:
+    cmds:
+      - task: help
+
+  help:
+    desc: Show all available tasks
+    cmds:
+      - task --list-all
+
+  deps:
+    desc: Download and tidy Go dependencies
+    cmds:
+      - go mod download
+      - go mod tidy
+
+  build:
+    desc: Build for current OS
+    deps:
+      - deps
+    cmds:
+      - mkdir -p {{.OUTPUT_DIR}}
+      - go build -o {{.OUTPUT_DIR}}/{{.BINARY_NAME}} {{.MAIN_PACKAGE}}
+
+  build-linux:
+    desc: Build for Linux (amd64)
+    deps:
+      - deps
+    cmds:
+      - mkdir -p {{.OUTPUT_DIR}}
+      - GOOS=linux GOARCH=amd64 go build -o {{.OUTPUT_DIR}}/{{.BINARY_NAME}}-linux {{.MAIN_PACKAGE}}
+
+  build-windows:
+    desc: Build for Windows (amd64)
+    deps:
+      - deps
+    cmds:
+      - mkdir -p {{.OUTPUT_DIR}}
+      - GOOS=windows GOARCH=amd64 go build -o {{.OUTPUT_DIR}}/{{.BINARY_NAME}}.exe {{.MAIN_PACKAGE}}
+
+  build-macos:
+    desc: Build for macOS (arm64 and amd64)
+    deps:
+      - deps
+    cmds:
+      - mkdir -p {{.OUTPUT_DIR}}
+      - GOOS=darwin GOARCH=arm64 go build -o {{.OUTPUT_DIR}}/{{.BINARY_NAME}}-macos-arm64 {{.MAIN_PACKAGE}}
+      - GOOS=darwin GOARCH=amd64 go build -o {{.OUTPUT_DIR}}/{{.BINARY_NAME}}-macos-amd64 {{.MAIN_PACKAGE}}
+
+  build-all:
+    desc: Build for all platforms
+    deps:
+      - build
+      - build-linux
+      - build-windows
+      - build-macos
+    cmds:
+      - echo "All builds completed"
+
+  run:
+    desc: Build and run the application
+    deps:
+      - build
+    cmds:
+      - "{{.OUTPUT_DIR}}/{{.BINARY_NAME}} help"
+
+  run-tui:
+    desc: Build and launch interactive TUI
+    deps:
+      - build
+    cmds:
+      - "{{.OUTPUT_DIR}}/{{.BINARY_NAME}}"
+
+  test:
+    desc: Run all tests
+    cmds:
+      - go test -v ./...
+
+  test-coverage:
+    desc: Run tests with coverage report
+    cmds:
+      - go test -v -coverprofile=coverage.out ./...
+      - go tool cover -html=coverage.out -o coverage.html
+
+  fmt:
+    desc: Format Go code
+    cmds:
+      - go fmt ./...
+
+  lint:
+    desc: Run Go linter
+    cmds:
+      - golangci-lint run ./...
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -rf {{.OUTPUT_DIR}}/
+      - go clean
+      - rm -f coverage.out coverage.html
+
+  clean-all:
+    desc: Deep clean
+    cmds:
+      - rm -rf {{.OUTPUT_DIR}}/
+      - rm -rf ~/.gotask/
+      - go clean
+      - rm -f coverage.out coverage.html
+
+  dev:
+    desc: Run in development mode with file watcher
+    deps:
+      - build
+    cmds:
+      - go run {{.MAIN_PACKAGE}}
+
+  check:
+    desc: Run all checks (fmt + lint + test)
+    cmds:
+      - task: fmt
+      - task: lint
+      - task: test
+
+  sanity:
+    desc: Run sanity tests
+    deps:
+      - build
+    cmds:
+      - bash test.sh
+
+  install:
+    desc: Install binary to GOPATH/bin
+    deps:
+      - build
+    cmds:
+      - go install {{.MAIN_PACKAGE}}
+
+  tidy:
+    desc: Tidy and verify Go modules
+    cmds:
+      - go mod tidy
+      - go mod verify
+
+  version:
+    desc: Show Go version
+    cmds:
+      - go version
+
+  db-status:
+    desc: Check database status
+    cmds:
+      - ls -lh ~/.gotask/gotask.db || echo "No database"
+
+  db-reset:
+    desc: Reset SQLite database
+    prompt: true
+    cmds:
+      - rm -f ~/.gotask/gotask.db
+
+  inbox-top:
+    desc: Show top 3 tasks
+    deps:
+      - build
+    cmds:
+      - "{{.OUTPUT_DIR}}/{{.BINARY_NAME}} inbox top"
+
+  timer-status:
+    desc: Check timer status
+    deps:
+      - build
+    cmds:
+      - "{{.OUTPUT_DIR}}/{{.BINARY_NAME}} timer status"
+
+  focus-snapshot:
+    desc: Show focus snapshot
+    deps:
+      - build
+    cmds:
+      - "{{.OUTPUT_DIR}}/{{.BINARY_NAME}} focus snapshot"
+
+  info:
+    desc: Show project information
+    cmds:
+      - echo "gotask - Go ADHD task management"

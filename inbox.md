@@ -1,0 +1,18 @@
+- [ ] Test task from CLI 🔼
+- [ ] Configurer le système de gestion de tâches 📅 2026-05-15 ⏫
+  - [ ] Définir les priorités 🔼 ⏱ 30m
+  - [ ] Tester les récurrences 🔼 ⏱ 45m
+- [ ] Méditation quotidienne 📅 2026-05-12 🔼
+- [ ] Réunion d'équipe 📅 2026-05-14 ⏫ ⏱ 1h
+  - [ ] test 🔼
+- [ ] Implémenter le CLI pour 📅 2026-05-20 🔺 ⏱ 2h
+  - [ ] Commandes inbox (top, add, start, complete) 🔼
+  - [ ] Commandes timer (start, stop, status) 🔼
+- [ ] Lire la documentation 📅 2026-05-25 🔽
+- [ ] Test task kkk 🔼
+  - [ ] jjjjj 🔼
+- [ ] Nouvelle tache 22:52:00 🔼
+- [ ] Nouv<elle tache 22:52:04 🔼
+- [ ] Nouvelle tache 22:52:04 🔼
+- [ ] ttttttt 🔼
+- [ ] dddddd 🔼
