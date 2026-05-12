@@ -26,11 +26,12 @@ Decision: `GO` -> Phase 1 is closed. Work proceeds under Phase 2-4 scope only.
 - Focus timer full-screen overlay with large timer and progress bar.
 - 1-second UI tick refresh for timer display.
 - Task modal input using Bubble Tea text input.
+- Advanced field editor in modal (description, priority, due date, duration).
+- Focus shortlist sorting/filtering by priority and due date (completed tasks excluded).
 - Logs panel migrated to Bubble Tea viewport.
 
 ### Partially completed
-- Task editing in TUI: description modal is implemented, but full field-based editor is not.
-- Task and subtask management: create/edit works, but advanced editing flows are pending.
+- TUI hardening is in progress (initial regression suite added, more flow coverage pending).
 
 ### Not started
 - Recurrence engine implementation.
@@ -43,10 +44,11 @@ Decision: `GO` -> Phase 1 is closed. Work proceeds under Phase 2-4 scope only.
 
 ### Priority 1: Advanced Task Editor
 
-Status: partial -> finish
+Status: done
 
 Target file:
-- internal/tui/editor.go (new)
+- internal/tui/app.go
+- internal/tui/views.go
 
 Scope:
 - Edit description, priority, due date, duration.
@@ -56,7 +58,7 @@ Scope:
 
 ### Priority 2: Tasks Sorting and Filtering
 
-Status: pending
+Status: done
 
 Current TODO:
 - internal/tui/views.go (getTopNTasks)
@@ -68,12 +70,17 @@ Scope:
 
 ### Priority 3: TUI Hardening
 
-Status: pending
+Status: in progress
 
 Scope:
 - Add tests for keybinding flows in Tasks/Focus/Logs.
 - Stabilize modal/timer overlay precedence rules.
 - Reduce duplicate state fields where possible.
+
+Delivered in this pass:
+- Added TUI regression tests for modal field navigation/save/validation.
+- Added sorting/filtering test for focus shortlist behavior.
+- Added move mode cancel test and timer-overlay-precedence test.
 
 ## Phase 3: Recurrence + Notifications + Daemon (2-3 weeks)
 
@@ -167,7 +174,7 @@ go test ./internal/rules/... -v
 
 - Notifications currently print to stdout (platform backends not implemented).
 - Recurrence is not yet integrated.
-- TUI advanced editor is still description-only.
+- TUI hardening suite is still partial (additional Focus/Logs flows to cover).
 - No dedicated daemon process yet.
 
 ## Success Criteria (Updated)
