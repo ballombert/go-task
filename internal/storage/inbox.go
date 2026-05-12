@@ -254,6 +254,56 @@ func (w *InboxWriter) WriteTasks(tasks []*domain.Task) error {
 	return writer.Flush()
 }
 
+// AppendTasksSafely appends root-level tasks without rewriting existing content.
+// It preserves existing file content and ensures proper newline separation.
+func (w *InboxWriter) AppendTasksSafely(tasks []*domain.Task) (int, error) {
+	if len(tasks) == 0 {
+		return 0, nil
+	}
+
+	file, err := os.OpenFile(w.FilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+
+	needLeadingNewline := false
+	stat, err := file.Stat()
+	if err != nil {
+		return 0, err
+	}
+	if stat.Size() > 0 {
+		last := make([]byte, 1)
+		if _, err := file.ReadAt(last, stat.Size()-1); err == nil && last[0] != '\n' {
+			needLeadingNewline = true
+		}
+	}
+
+	writer := bufio.NewWriter(file)
+	if needLeadingNewline {
+		if _, err := writer.WriteString("\n"); err != nil {
+			return 0, err
+		}
+	}
+
+	count := 0
+	for _, task := range tasks {
+		if task == nil {
+			continue
+		}
+		if _, err := writer.WriteString(w.taskToLine(task, "") + "\n"); err != nil {
+			return count, err
+		}
+		count++
+	}
+
+	if err := writer.Flush(); err != nil {
+		return count, err
+	}
+
+	return count, nil
+}
+
 func (w *InboxWriter) writeTasks(writer *bufio.Writer, tasks []*domain.Task, indent int) {
 	indentStr := strings.Repeat("  ", indent)
 	for _, task := range tasks {

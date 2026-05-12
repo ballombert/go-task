@@ -19,9 +19,11 @@ A cross-platform Go application designed to help people with ADHD manage daily t
 - ✅ Task sorting/filtering refinements
 - ✅ TUI hardening baseline tests
 
-**Phase 3-4: In Progress**
+**Phase 3: In Progress (Kickoff started)**
 - Recurrence engine for automatic task generation
 - System notifications (platform-specific)
+
+**Phase 4: Planned**
 
 ## ✅ Phase 1 Acceptance Checklist
 

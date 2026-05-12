@@ -7,23 +7,26 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/beaallombert/gotask/internal/domain"
+	"github.com/beaallombert/gotask/internal/rules"
 	"github.com/beaallombert/gotask/internal/storage"
 	"github.com/beaallombert/gotask/internal/timer"
 )
 
 // App represents the CLI application
 type App struct {
-	inboxPath      string
-	dbPath         string
-	inboxReader    *storage.InboxReader
-	inboxWriter    *storage.InboxWriter
-	logger         *storage.SQLiteLogger
-	timerManager   *timer.Manager
-	timerStatePath string
-	timerStateStore *storage.TimerStateStore
+	inboxPath           string
+	dbPath              string
+	inboxReader         *storage.InboxReader
+	inboxWriter         *storage.InboxWriter
+	logger              *storage.SQLiteLogger
+	timerManager        *timer.Manager
+	timerStatePath      string
+	timerStateStore     *storage.TimerStateStore
+	recurrenceGenerator *rules.RecurrenceGenerator
 }
 
 // NewApp creates a new CLI app
@@ -50,16 +53,17 @@ func NewApp() (*App, error) {
 	}
 
 	timerStateStore := storage.NewTimerStateStore(timerStatePath)
-	
+
 	app := &App{
-		inboxPath:      inboxPath,
-		dbPath:         dbPath,
-		inboxReader:    reader,
-		inboxWriter:    writer,
-		logger:         logger,
-		timerManager:   timer.NewManager(),
-		timerStatePath: timerStatePath,
-		timerStateStore: timerStateStore,
+		inboxPath:           inboxPath,
+		dbPath:              dbPath,
+		inboxReader:         reader,
+		inboxWriter:         writer,
+		logger:              logger,
+		timerManager:        timer.NewManager(),
+		timerStatePath:      timerStatePath,
+		timerStateStore:     timerStateStore,
+		recurrenceGenerator: rules.NewRecurrenceGenerator(),
 	}
 
 	// Load existing timer from disk
@@ -75,6 +79,10 @@ func (app *App) HandleInboxCommand(args []string) error {
 	if len(args) == 0 {
 		fmt.Println("Usage: gotask inbox <subcommand> [options]")
 		return nil
+	}
+
+	if err := app.syncRecurringTasks(); err != nil {
+		return err
 	}
 
 	fs := flag.NewFlagSet("inbox", flag.ContinueOnError)
@@ -368,7 +376,7 @@ func (app *App) handleTimerStart(presetName string, taskLine int) error {
 
 	// Start timer
 	timer := app.timerManager.Start(taskID, *preset)
-	
+
 	// Persist timer state
 	if err := app.timerStateStore.Save(timer); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: Could not save timer state: %v\n", err)
@@ -484,4 +492,66 @@ func (app *App) Close() error {
 		return app.logger.Close()
 	}
 	return nil
+}
+
+func (app *App) syncRecurringTasks() error {
+	if app.recurrenceGenerator == nil {
+		return nil
+	}
+
+	tasks, err := app.inboxReader.ReadTasks()
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+	horizon := now.Add(14 * 24 * time.Hour)
+	generated := app.recurrenceGenerator.Generate(tasks, now, horizon)
+	if len(generated) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(tasks)+len(generated))
+	for _, task := range tasks {
+		key := recurrenceDedupKey(task)
+		if key == "" {
+			continue
+		}
+		seen[key] = struct{}{}
+	}
+
+	toAppend := make([]*domain.Task, 0, len(generated))
+	for _, task := range generated {
+		key := recurrenceDedupKey(task)
+		if key == "" {
+			continue
+		}
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		toAppend = append(toAppend, task)
+	}
+
+	if len(toAppend) == 0 {
+		return nil
+	}
+
+	count, err := app.inboxWriter.AppendTasksSafely(toAppend)
+	if err != nil {
+		return err
+	}
+
+	if count > 0 {
+		fmt.Printf("↻ %d recurring task(s) generated\n", count)
+	}
+
+	return nil
+}
+
+func recurrenceDedupKey(task *domain.Task) string {
+	if task == nil || task.DueDate == nil {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(task.Description)) + "|" + string(task.Priority) + "|" + task.DueDate.Format("2006-01-02")
 }

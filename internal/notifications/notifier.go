@@ -2,7 +2,9 @@ package notifications
 
 import (
 	"fmt"
+	"os/exec"
 	"runtime"
+	"strings"
 )
 
 // Notifier sends system notifications
@@ -46,9 +48,18 @@ func (n *WindowsNotifier) Send(title string, message string) error {
 type MacNotifier struct{}
 
 func (n *MacNotifier) Send(title string, message string) error {
-	// TODO: Implement using osascript or NSUserNotificationCenter
-	// For now, use stub
-	fmt.Printf("[MACOS NOTIFICATION] %s: %s\n", title, message)
+	if _, err := exec.LookPath("osascript"); err != nil {
+		fmt.Printf("[MACOS NOTIFICATION] %s: %s\n", title, message)
+		return nil
+	}
+
+	escapedTitle := strings.ReplaceAll(title, `"`, `\\"`)
+	escapedMessage := strings.ReplaceAll(message, `"`, `\\"`)
+	script := fmt.Sprintf(`display notification "%s" with title "%s"`, escapedMessage, escapedTitle)
+	cmd := exec.Command("osascript", "-e", script)
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("[MACOS NOTIFICATION] %s: %s\n", title, message)
+	}
 	return nil
 }
 
@@ -56,8 +67,13 @@ func (n *MacNotifier) Send(title string, message string) error {
 type LinuxNotifier struct{}
 
 func (n *LinuxNotifier) Send(title string, message string) error {
-	// TODO: Implement using d-bus or notify-send
-	// For now, use stub
+	if _, err := exec.LookPath("notify-send"); err == nil {
+		cmd := exec.Command("notify-send", title, message)
+		if err := cmd.Run(); err == nil {
+			return nil
+		}
+	}
+
 	fmt.Printf("[LINUX NOTIFICATION] %s: %s\n", title, message)
 	return nil
 }

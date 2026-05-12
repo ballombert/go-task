@@ -94,9 +94,16 @@ Delivered in this pass:
 
 ## Phase 3: Recurrence + Notifications + Daemon (2-3 weeks)
 
+Status: in progress
+
+Kickoff delivered:
+- Recurrence generator scaffold added in internal/rules/recurrence.go.
+- Daemon evaluator loop scaffold added in internal/daemon/evaluator.go.
+- macOS and Linux notifier backends now attempt real system commands with fallback.
+
 ### Priority 1: Recurrence Engine
 
-Status: not started
+Status: in progress
 
 Target file:
 - internal/rules/recurrence.go (new)
@@ -108,7 +115,7 @@ Minimal v1 scope:
 
 ### Priority 2: System Notifications
 
-Status: scaffold exists, real impl missing
+Status: in progress
 
 Current TODOs:
 - internal/notifications/notifier.go
@@ -121,7 +128,7 @@ Scope:
 
 ### Priority 3: Background Evaluator Loop
 
-Status: not started
+Status: in progress
 
 Target file:
 - internal/daemon/evaluator.go (new)
