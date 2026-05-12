@@ -16,3 +16,20 @@ __pycache__
 .env
 .env.local
 vendor/
+
+# Go build artifacts
+bin/
+*.test
+*.prof
+cover.out
+coverage.out
+coverage.html
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Local runtime/debug artifacts
+tmp/
+*.tmp
+*.pid
