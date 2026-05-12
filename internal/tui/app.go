@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +20,8 @@ import (
 type View string
 
 type tickMsg time.Time
+
+var modalFields = []string{"description", "priority", "due_date", "duration"}
 
 const (
 	ViewTasks View = "tasks"
@@ -50,6 +53,8 @@ type Model struct {
 	modalError         string
 	modalEditTarget    *domain.Task
 	modalCreateParent  *domain.Task
+	modalDraft         *domain.Task
+	modalFieldIdx      int
 	taskInput          textinput.Model
 	progressBar        progress.Model
 	logsViewport       viewport.Model
@@ -101,6 +106,8 @@ func NewModel(inboxPath string, dbPath string) (*Model, error) {
 		modalError:         "",
 		modalEditTarget:    nil,
 		modalCreateParent:  nil,
+		modalDraft:         nil,
+		modalFieldIdx:      0,
 		taskInput:          input,
 		progressBar:        bar,
 		logsViewport:       vp,
@@ -241,21 +248,38 @@ func (m Model) handleTasksKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "esc":
 			m.closeTaskModal()
 			return m, nil
+		case "tab", "shift+tab":
+			if err := m.saveModalInputToDraft(); err != nil {
+				m.modalError = err.Error()
+				return m, nil
+			}
+			if msg.String() == "tab" {
+				m.modalFieldIdx = (m.modalFieldIdx + 1) % len(modalFields)
+			} else {
+				m.modalFieldIdx = (m.modalFieldIdx - 1 + len(modalFields)) % len(modalFields)
+			}
+			m.loadModalInputFromDraft()
+			m.modalError = ""
+			return m, nil
 		case "enter":
-			description := strings.TrimSpace(m.taskInput.Value())
-			if description == "" {
+			if err := m.saveModalInputToDraft(); err != nil {
+				m.modalError = err.Error()
+				return m, nil
+			}
+
+			if m.modalDraft == nil || strings.TrimSpace(m.modalDraft.Description) == "" {
 				m.modalError = "Description obligatoire"
 				return m, nil
 			}
 
 			if m.createMode {
 				if m.modalCreateParent != nil {
-					m.createSubtask(m.modalCreateParent, description)
+					m.createSubtaskFromDraft(m.modalCreateParent)
 				} else {
-					m.createTask(description)
+					m.createTaskFromDraft()
 				}
 			} else if m.editMode && m.modalEditTarget != nil {
-				m.modalEditTarget.Description = description
+				m.applyDraftToTask(m.modalEditTarget)
 			}
 
 			m.closeTaskModal()
@@ -415,7 +439,13 @@ func (m *Model) openCreateModal() {
 	m.modalCreateParent = nil
 	m.modalInput = ""
 	m.modalError = ""
-	m.taskInput.SetValue("")
+	m.modalFieldIdx = 0
+	m.modalDraft = &domain.Task{
+		Status:    domain.StatusPaused,
+		Priority:  domain.PriorityMedium,
+		CreatedAt: time.Now(),
+	}
+	m.loadModalInputFromDraft()
 	m.taskInput.Focus()
 }
 
@@ -426,7 +456,13 @@ func (m *Model) openCreateSubtaskModal(parent *domain.Task) {
 	m.modalCreateParent = parent
 	m.modalInput = ""
 	m.modalError = ""
-	m.taskInput.SetValue("")
+	m.modalFieldIdx = 0
+	m.modalDraft = &domain.Task{
+		Status:    domain.StatusPaused,
+		Priority:  domain.PriorityMedium,
+		CreatedAt: time.Now(),
+	}
+	m.loadModalInputFromDraft()
 	m.taskInput.Focus()
 }
 
@@ -437,7 +473,9 @@ func (m *Model) openEditModal(target *domain.Task) {
 	m.modalCreateParent = nil
 	m.modalInput = target.Description
 	m.modalError = ""
-	m.taskInput.SetValue(target.Description)
+	m.modalFieldIdx = 0
+	m.modalDraft = cloneTaskForEdit(target)
+	m.loadModalInputFromDraft()
 	m.taskInput.Focus()
 }
 
@@ -448,6 +486,8 @@ func (m *Model) closeTaskModal() {
 	m.modalError = ""
 	m.modalEditTarget = nil
 	m.modalCreateParent = nil
+	m.modalDraft = nil
+	m.modalFieldIdx = 0
 	m.taskInput.Blur()
 }
 
@@ -486,6 +526,30 @@ func (m *Model) createTask(description string) {
 	m.selectedSubtaskIdx = -1
 }
 
+func (m *Model) createTaskFromDraft() {
+	if m.modalDraft == nil {
+		return
+	}
+
+	newTask := &domain.Task{
+		ID:          fmt.Sprintf("task-%d", time.Now().UnixNano()),
+		Description: strings.TrimSpace(m.modalDraft.Description),
+		Status:      domain.StatusPaused,
+		Priority:    m.modalDraft.Priority,
+		DueDate:     m.modalDraft.DueDate,
+		Duration:    m.modalDraft.Duration,
+		CreatedAt:   time.Now(),
+	}
+	if newTask.Priority == "" {
+		newTask.Priority = domain.PriorityMedium
+	}
+
+	m.tasks = append(m.tasks, newTask)
+	m.selectedIdx = len(m.tasks) - 1
+	m.selectingSubtask = false
+	m.selectedSubtaskIdx = -1
+}
+
 func (m *Model) createSubtask(parent *domain.Task, description string) {
 	if parent == nil {
 		return
@@ -503,6 +567,140 @@ func (m *Model) createSubtask(parent *domain.Task, description string) {
 	parent.Subtasks = append(parent.Subtasks, newSubtask)
 	m.selectingSubtask = true
 	m.selectedSubtaskIdx = len(parent.Subtasks) - 1
+}
+
+func (m *Model) createSubtaskFromDraft(parent *domain.Task) {
+	if parent == nil || m.modalDraft == nil {
+		return
+	}
+
+	newSubtask := &domain.Task{
+		ID:          fmt.Sprintf("task-%d", time.Now().UnixNano()),
+		Description: strings.TrimSpace(m.modalDraft.Description),
+		Status:      domain.StatusPaused,
+		Priority:    m.modalDraft.Priority,
+		DueDate:     m.modalDraft.DueDate,
+		Duration:    m.modalDraft.Duration,
+		CreatedAt:   time.Now(),
+		ParentID:    parent.ID,
+	}
+	if newSubtask.Priority == "" {
+		newSubtask.Priority = domain.PriorityMedium
+	}
+
+	parent.Subtasks = append(parent.Subtasks, newSubtask)
+	m.selectingSubtask = true
+	m.selectedSubtaskIdx = len(parent.Subtasks) - 1
+}
+
+func (m *Model) applyDraftToTask(target *domain.Task) {
+	if target == nil || m.modalDraft == nil {
+		return
+	}
+	target.Description = strings.TrimSpace(m.modalDraft.Description)
+	target.Priority = m.modalDraft.Priority
+	target.DueDate = m.modalDraft.DueDate
+	target.Duration = m.modalDraft.Duration
+}
+
+func (m *Model) currentModalField() string {
+	if m.modalFieldIdx < 0 || m.modalFieldIdx >= len(modalFields) {
+		return "description"
+	}
+	return modalFields[m.modalFieldIdx]
+}
+
+func (m *Model) loadModalInputFromDraft() {
+	if m.modalDraft == nil {
+		m.taskInput.SetValue("")
+		return
+	}
+
+	switch m.currentModalField() {
+	case "description":
+		m.taskInput.SetValue(m.modalDraft.Description)
+		m.taskInput.Placeholder = "Description..."
+	case "priority":
+		m.taskInput.SetValue(string(m.modalDraft.Priority))
+		m.taskInput.Placeholder = "highest|high|medium|low|lowest"
+	case "due_date":
+		if m.modalDraft.DueDate != nil {
+			m.taskInput.SetValue(m.modalDraft.DueDate.Format("2006-01-02"))
+		} else {
+			m.taskInput.SetValue("")
+		}
+		m.taskInput.Placeholder = "YYYY-MM-DD (empty to clear)"
+	case "duration":
+		if m.modalDraft.Duration > 0 {
+			m.taskInput.SetValue(strconv.Itoa(m.modalDraft.Duration))
+		} else {
+			m.taskInput.SetValue("")
+		}
+		m.taskInput.Placeholder = "minutes (ex: 25)"
+	}
+}
+
+func (m *Model) saveModalInputToDraft() error {
+	if m.modalDraft == nil {
+		return nil
+	}
+
+	value := strings.TrimSpace(m.taskInput.Value())
+	field := m.currentModalField()
+
+	switch field {
+	case "description":
+		m.modalDraft.Description = value
+		if value == "" {
+			return fmt.Errorf("description obligatoire")
+		}
+	case "priority":
+		priority, err := parsePriorityInput(value)
+		if err != nil {
+			return err
+		}
+		m.modalDraft.Priority = priority
+	case "due_date":
+		if value == "" {
+			m.modalDraft.DueDate = nil
+			return nil
+		}
+		d, err := time.Parse("2006-01-02", value)
+		if err != nil {
+			return fmt.Errorf("date invalide: YYYY-MM-DD")
+		}
+		m.modalDraft.DueDate = &d
+	case "duration":
+		if value == "" {
+			m.modalDraft.Duration = 0
+			return nil
+		}
+		dur, err := strconv.Atoi(value)
+		if err != nil || dur < 0 {
+			return fmt.Errorf("duree invalide: minutes >= 0")
+		}
+		m.modalDraft.Duration = dur
+	}
+
+	return nil
+}
+
+func parsePriorityInput(value string) (domain.Priority, error) {
+	v := strings.ToLower(strings.TrimSpace(value))
+	switch v {
+	case "", "medium", "m", "normal", "🔼":
+		return domain.PriorityMedium, nil
+	case "highest", "h1", "critical", "🔺":
+		return domain.PriorityHighest, nil
+	case "high", "h", "⏫":
+		return domain.PriorityHigh, nil
+	case "low", "l", "🔽":
+		return domain.PriorityLow, nil
+	case "lowest", "l2", "⏬":
+		return domain.PriorityLowest, nil
+	default:
+		return "", fmt.Errorf("priorite invalide: highest|high|medium|low|lowest")
+	}
 }
 
 func (m *Model) moveSelectedTask(delta int) bool {

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/beaallombert/gotask/internal/domain"
@@ -91,14 +92,54 @@ func (m Model) renderTaskModal() string {
 		}
 	}
 
+	field := m.currentModalField()
+	fieldHeader := fmt.Sprintf("Champ: %s (Tab/Shift+Tab)", field)
+
+	descriptionVal := ""
+	priorityVal := "medium"
+	dueDateVal := "-"
+	durationVal := "0"
+	if m.modalDraft != nil {
+		descriptionVal = strings.TrimSpace(m.modalDraft.Description)
+		if descriptionVal == "" {
+			descriptionVal = "-"
+		}
+		if m.modalDraft.Priority != "" {
+			priorityVal = string(m.modalDraft.Priority)
+		}
+		if m.modalDraft.DueDate != nil {
+			dueDateVal = m.modalDraft.DueDate.Format("2006-01-02")
+		}
+		if m.modalDraft.Duration > 0 {
+			durationVal = fmt.Sprintf("%d", m.modalDraft.Duration)
+		}
+	}
+
+	fieldLabel := func(name, value string) string {
+		prefix := "  "
+		if field == name {
+			prefix = "> "
+		}
+		return fmt.Sprintf("%s%-12s %s", prefix, name+":", value)
+	}
+
+	fieldsOverview := strings.Join([]string{
+		fieldLabel("description", descriptionVal),
+		fieldLabel("priority", priorityVal),
+		fieldLabel("due_date", dueDateVal),
+		fieldLabel("duration", durationVal+" min"),
+	}, "\n")
+
 	content := title + "\n" +
+		fieldsOverview + "\n\n" +
+		headerStyle.Render(fieldHeader) + "\n" +
 		m.taskInput.View() + "\n"
 
 	if m.modalError != "" {
 		content += errorStyle.Render(m.modalError) + "\n"
 	}
 
-	content += helpStyle.Render("Entrer une description, puis Enter pour sauver")
+	content += helpStyle.Render(modalFieldHint(field))
 	return modalStyle.Render(content)
 }
 
@@ -208,16 +249,63 @@ func (m Model) formatActiveTimer(remaining int64) string {
 }
 
 func (m Model) getTopNTasks(n int) []string {
-	// TODO: Implement proper task sorting and filtering
-	if len(m.tasks) == 0 {
+	if len(m.tasks) == 0 || n <= 0 {
 		return []string{}
 	}
 
+	candidates := make([]*domain.Task, 0, len(m.tasks))
+	for _, task := range m.tasks {
+		if task == nil || task.Status == domain.StatusCompleted {
+			continue
+		}
+		candidates = append(candidates, task)
+	}
+
+	if len(candidates) == 0 {
+		return []string{}
+	}
+
+	sort.SliceStable(candidates, func(i, j int) bool {
+		a := candidates[i]
+		b := candidates[j]
+
+		if a.EffectivePriority() != b.EffectivePriority() {
+			return a.EffectivePriority() < b.EffectivePriority()
+		}
+
+		if a.DueDate != nil && b.DueDate != nil && !a.DueDate.Equal(*b.DueDate) {
+			return a.DueDate.Before(*b.DueDate)
+		}
+		if a.DueDate != nil && b.DueDate == nil {
+			return true
+		}
+		if a.DueDate == nil && b.DueDate != nil {
+			return false
+		}
+
+		return a.CreatedAt.Before(b.CreatedAt)
+	})
+
 	var result []string
-	for i := 0; i < n && i < len(m.tasks); i++ {
-		result = append(result, m.tasks[i].Description)
+	for i := 0; i < n && i < len(candidates); i++ {
+		result = append(result, candidates[i].Description)
 	}
 	return result
+}
+
+func modalFieldHint(field string) string {
+	switch field {
+	case "description":
+		return "Description de la tache. Enter: sauver, Esc: annuler"
+	case "priority":
+		return "Priorite: highest|high|medium|low|lowest"
+	case "due_date":
+		return "Echeance: YYYY-MM-DD (vide pour effacer)"
+	case "duration":
+		return "Duree en minutes (ex: 25)"
+	default:
+		return "Enter: sauver | Esc: annuler"
+	}
 }
 
 func (m Model) renderTimerOverlayModal() string {
