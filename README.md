@@ -2,6 +2,8 @@
 
 A cross-platform Go application designed to help people with ADHD manage daily tasks, timers, and focus. Based on the original .NET "ConducteurOrchestre" project, gotask provides a lightweight, command-line-first interface with an optional TUI (Terminal User Interface).
 
+![alt text](docs/Images/image.png)
+![alt text](docs/Images/image-1.png)
 ## 🎯 Project Status
 
 **Phase 1: ✅ Closed (Validated)**
@@ -131,9 +133,55 @@ Tasks are stored in `inbox.md` in Obsidian Tasks format:
 
 ## ⚙️ Configuration
 
-- Inbox location: `inbox.md` (current directory)
+- Inbox location: configurable via `config.yml` (`inbox_path`)
 - Data storage: `~/.gotask/` (SQLite database, timer state)
 - Logs: `~/.gotask/gotask.db`
+
+## Configuration
+
+Le fichier `config.yml` permet de personnaliser l'emplacement de l'inbox et les profils Pomodoro :
+
+```yaml
+# Liste des profils Pomodoro
+pomodoro_type:
+  - classique:
+      work_duration: 25
+      break_duration: 5
+      long_break_duration: 15
+      cycles_before_long_break: 4
+  - court:
+      work_duration: 15
+      break_duration: 3
+      long_break_duration: 10
+      cycles_before_long_break: 4
+  - long:
+      work_duration: 50
+      break_duration: 10
+      long_break_duration: 20
+      cycles_before_long_break: 2
+
+# Emplacement du fichier inbox.md
+inbox_path: inbox.md
+```
+
+- **pomodoro_type** : Liste des types de Pomodoro proposés dans la modal (`S` dans le TUI).
+- **inbox_path** : Spécifie l'emplacement du fichier `inbox.md` pour la gestion des tâches.
+
+Raccourcis TUI Pomodoro :
+- `S` : ouvrir la modal de sélection d'un type de timer depuis `config.yml`
+- `Enter` : valider le type sélectionné et démarrer en phase `work_duration`
+- `Esc` : fermer la modal (ou stopper le timer actif)
+- `P` : basculer manuellement en phase pause (`break_duration`)
+- `W` : basculer manuellement en phase travail (`work_duration`)
+
+Bindings retirés :
+- `A` / `Z`
+- `1` / `2`
+
+Cycle automatique :
+- fin d'un `work_duration` => `break_duration`
+- après `cycles_before_long_break` cycles de travail => `long_break_duration`
+- fin d'une pause (`break` ou `long break`) => retour en `work_duration`
 
 ## 🔧 Development
 

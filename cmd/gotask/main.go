@@ -3,8 +3,10 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/beaallombert/gotask/internal/cli"
+	"github.com/beaallombert/gotask/internal/config"
 	"github.com/beaallombert/gotask/internal/tui"
 )
 
@@ -16,9 +18,21 @@ func main() {
 	}
 	defer app.Close()
 
+	dbPath, err := defaultDBPath()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	cfg, err := config.LoadFromFile("config.yml")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading config.yml: %v\n", err)
+		os.Exit(1)
+	}
+
 	if len(os.Args) < 2 {
 		// No arguments - launch TUI
-		if err := tui.Start("inbox.md", os.ExpandEnv("$HOME/.gotask/gotask.db")); err != nil {
+		if err := tui.Start(cfg.InboxPath, dbPath); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -32,7 +46,7 @@ func main() {
 		printHelp()
 
 	case "tui":
-		if err := tui.Start("inbox.md", os.ExpandEnv("$HOME/.gotask/gotask.db")); err != nil {
+		if err := tui.Start(cfg.InboxPath, dbPath); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -91,4 +105,18 @@ Commands:
   help                    Show this help message
 `
 	fmt.Println(help)
+}
+
+func defaultDBPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+
+	appDir := filepath.Join(home, ".gotask")
+	if err := os.MkdirAll(appDir, 0700); err != nil {
+		return "", err
+	}
+
+	return filepath.Join(appDir, "gotask.db"), nil
 }

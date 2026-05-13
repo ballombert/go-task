@@ -1,0 +1,22 @@
+# Configuration pour l'application Go-Task
+
+# Type de Pomodoro (par exemple : classique, court, long)
+pomodoro_type: 
+  - classique :
+      work_duration: 25 # Durée de travail en minutes
+      break_duration: 5  # Durée de pause en minutes
+      long_break_duration: 15 # Durée de la longue pause en minutes
+      cycles_before_long_break: 4 # Nombre de cycles avant une longue pause
+  - court :
+      work_duration: 15
+      break_duration: 3
+      long_break_duration: 10
+      cycles_before_long_break: 4
+  - long :
+      work_duration: 50
+      break_duration: 10
+      long_break_duration: 20
+      cycles_before_long_break: 2
+
+# Emplacement du fichier inbox.md
+inbox_path: inbox.md

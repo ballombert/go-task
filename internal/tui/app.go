@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/beaallombert/gotask/internal/config"
 	"github.com/beaallombert/gotask/internal/domain"
 	"github.com/beaallombert/gotask/internal/rules"
 	"github.com/beaallombert/gotask/internal/storage"
@@ -28,6 +29,19 @@ const (
 	ViewFocus View = "focus"
 	ViewLogs  View = "logs"
 )
+
+const (
+	pomodoroPhaseWork      = "work"
+	pomodoroPhaseBreak     = "break"
+	pomodoroPhaseLongBreak = "long_break"
+)
+
+type pomodoroSession struct {
+	profile     config.PomodoroType
+	phase       string
+	workCycles  int
+	selectedFor *domain.Task
+}
 
 // Model represents the application state
 type Model struct {
@@ -61,6 +75,10 @@ type Model struct {
 	logsViewportReady  bool
 	logsOffset         int
 	logs               string
+	pomodoroTypes      []config.PomodoroType
+	pomodoroModalOpen  bool
+	pomodoroSelectIdx  int
+	pomodoroSession    *pomodoroSession
 	err                error
 }
 
@@ -86,6 +104,7 @@ func NewModel(inboxPath string, dbPath string) (*Model, error) {
 
 	bar := progress.New(progress.WithDefaultGradient())
 	vp := viewport.New(80, 12)
+	cfg, _ := config.LoadFromFile("config.yml")
 
 	return &Model{
 		view:               ViewTasks,
@@ -113,6 +132,10 @@ func NewModel(inboxPath string, dbPath string) (*Model, error) {
 		logsViewport:       vp,
 		logsViewportReady:  false,
 		logsOffset:         0,
+		pomodoroTypes:      cfg.PomodoroTypes,
+		pomodoroModalOpen:  false,
+		pomodoroSelectIdx:  0,
+		pomodoroSession:    nil,
 	}, nil
 }
 
@@ -132,6 +155,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.resizeLogsViewport()
 		return m, nil
 	case tickMsg:
+		m.handlePomodoroTick()
 		return m, tickCmd()
 	}
 
@@ -186,6 +210,10 @@ func (m Model) View() string {
 		return m.renderTimerOverlayModal()
 	}
 
+	if m.pomodoroModalOpen {
+		return m.renderPomodoroSelectOverlayModal()
+	}
+
 	if m.createMode || m.editMode {
 		return m.renderTaskOverlayModal()
 	}
@@ -194,10 +222,15 @@ func (m Model) View() string {
 }
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.pomodoroModalOpen {
+		return m.handlePomodoroModalKey(msg)
+	}
+
 	if msg.String() == "esc" {
 		if stopped := m.timerManager.Stop(true); stopped != nil {
 			taskID := stopped.TaskID
 			_ = m.logger.LogAction("timer_stopped", &taskID, "stopped_with_escape")
+			m.pomodoroSession = nil
 			return m, nil
 		}
 	}
@@ -209,6 +242,15 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
+	case "s", "S":
+		m.openPomodoroModalForCurrentTask()
+		return m, nil
+	case "p", "P":
+		m.switchPomodoroToBreak()
+		return m, nil
+	case "w", "W":
+		m.switchPomodoroToWork()
+		return m, nil
 	case "t", "T":
 		m.view = ViewTasks
 		return m, nil
@@ -411,21 +453,6 @@ func (m Model) handleTasksKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.openEditModal(target)
-		return m, nil
-	case "1", "2", "&", "é", "a", "z":
-		target := m.selectedTaskTarget()
-		if target == nil {
-			return m, nil
-		}
-		preset, ok := presetForFocusKey(msg.String())
-		if !ok {
-			return m, nil
-		}
-		m.timerManager.Start(target.ID, preset)
-		m.activeTask = target
-		m.view = ViewFocus
-		taskID := target.ID
-		_ = m.logger.LogAction("timer_started", &taskID, preset.Name)
 		return m, nil
 	}
 
@@ -824,28 +851,6 @@ func (m Model) handleFocusKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.activeTask = m.tasks[m.selectedIdx]
 		}
 		return m, nil
-	case "1", "2", "&", "é", "a", "z":
-		if len(m.tasks) == 0 {
-			return m, nil
-		}
-
-		if m.activeTask == nil {
-			if m.selectedIdx < 0 || m.selectedIdx >= len(m.tasks) {
-				m.selectedIdx = 0
-			}
-			m.activeTask = m.tasks[m.selectedIdx]
-		}
-
-		preset, ok := presetForFocusKey(msg.String())
-		if !ok {
-			return m, nil
-		}
-
-		m.timerManager.Start(m.activeTask.ID, preset)
-		m.view = ViewFocus
-		taskID := m.activeTask.ID
-		_ = m.logger.LogAction("timer_started", &taskID, preset.Name)
-		return m, nil
 	}
 
 	return m, nil
@@ -892,18 +897,172 @@ func previousView(v View) View {
 	}
 }
 
-func presetForFocusKey(key string) (domain.TimerPreset, bool) {
-	presets := domain.DefaultPresets()
-	switch key {
-	case "1", "&", "a":
-		if len(presets) > 0 {
-			return presets[0], true
+func (m *Model) openPomodoroModalForCurrentTask() {
+	if m.timerManager.GetActive() != nil {
+		return
+	}
+
+	target := m.currentPomodoroTargetTask()
+	if target == nil || len(m.pomodoroTypes) == 0 {
+		return
+	}
+
+	m.activeTask = target
+	m.pomodoroModalOpen = true
+	m.pomodoroSelectIdx = 0
+	m.view = ViewFocus
+}
+
+func (m Model) handlePomodoroModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if len(m.pomodoroTypes) == 0 {
+		m.pomodoroModalOpen = false
+		return m, nil
+	}
+
+	switch msg.String() {
+	case "esc":
+		m.pomodoroModalOpen = false
+		return m, nil
+	case "j", "down":
+		if m.pomodoroSelectIdx < len(m.pomodoroTypes)-1 {
+			m.pomodoroSelectIdx++
 		}
-	case "2", "é", "z":
-		if len(presets) > 1 {
-			return presets[1], true
+		return m, nil
+	case "k", "up":
+		if m.pomodoroSelectIdx > 0 {
+			m.pomodoroSelectIdx--
+		}
+		return m, nil
+	case "enter":
+		profile := m.pomodoroTypes[m.pomodoroSelectIdx]
+		m.startPomodoroProfile(profile)
+		m.pomodoroModalOpen = false
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func (m *Model) currentPomodoroTargetTask() *domain.Task {
+	if m.view == ViewTasks {
+		return m.selectedTaskTarget()
+	}
+
+	if m.view == ViewFocus {
+		if m.activeTask != nil {
+			return m.activeTask
+		}
+		if len(m.tasks) > 0 && m.selectedIdx >= 0 && m.selectedIdx < len(m.tasks) {
+			return m.tasks[m.selectedIdx]
 		}
 	}
 
-	return domain.TimerPreset{}, false
+	if len(m.tasks) > 0 && m.selectedIdx >= 0 && m.selectedIdx < len(m.tasks) {
+		return m.tasks[m.selectedIdx]
+	}
+
+	return nil
 }
+
+func (m *Model) startPomodoroProfile(profile config.PomodoroType) {
+	if m.activeTask == nil {
+		return
+	}
+
+	m.pomodoroSession = &pomodoroSession{
+		profile:     profile,
+		phase:       pomodoroPhaseWork,
+		workCycles:  0,
+		selectedFor: m.activeTask,
+	}
+	m.startCurrentPomodoroPhaseTimer()
+}
+
+func (m *Model) switchPomodoroToBreak() {
+	if m.timerManager.GetActive() == nil || m.pomodoroSession == nil {
+		return
+	}
+	m.pomodoroSession.phase = pomodoroPhaseBreak
+	m.startCurrentPomodoroPhaseTimer()
+}
+
+func (m *Model) switchPomodoroToWork() {
+	if m.timerManager.GetActive() == nil || m.pomodoroSession == nil {
+		return
+	}
+	m.pomodoroSession.phase = pomodoroPhaseWork
+	m.startCurrentPomodoroPhaseTimer()
+}
+
+func (m *Model) startCurrentPomodoroPhaseTimer() {
+	if m.pomodoroSession == nil || m.activeTask == nil {
+		return
+	}
+
+	phase := m.pomodoroSession.phase
+	profile := m.pomodoroSession.profile
+	duration := profile.WorkDuration
+	name := fmt.Sprintf("%s work", profile.Name)
+
+	switch phase {
+	case pomodoroPhaseBreak:
+		duration = profile.BreakDuration
+		name = fmt.Sprintf("%s break", profile.Name)
+	case pomodoroPhaseLongBreak:
+		duration = profile.LongBreakDuration
+		name = fmt.Sprintf("%s long break", profile.Name)
+	}
+
+	preset := domain.TimerPreset{Name: name, Duration: duration}
+	m.timerManager.Start(m.activeTask.ID, preset)
+	taskID := m.activeTask.ID
+	_ = m.logger.LogAction("timer_started", &taskID, name)
+}
+
+func (m *Model) handlePomodoroTick() {
+	if m.pomodoroSession == nil {
+		return
+	}
+
+	active := m.timerManager.GetActive()
+	if active == nil {
+		return
+	}
+
+	if active.Remaining() > 0 {
+		return
+	}
+
+	finished := m.timerManager.Stop(false)
+	if finished == nil {
+		return
+	}
+
+	taskID := finished.TaskID
+	_ = m.logger.LogAction("timer_completed", &taskID, finished.Preset.Name)
+	m.advancePomodoroPhaseAndStartNext()
+}
+
+func (m *Model) advancePomodoroPhaseAndStartNext() {
+	if m.pomodoroSession == nil {
+		return
+	}
+
+	profile := m.pomodoroSession.profile
+
+	switch m.pomodoroSession.phase {
+	case pomodoroPhaseWork:
+		m.pomodoroSession.workCycles++
+		if m.pomodoroSession.workCycles >= profile.CyclesBeforeLongBreak {
+			m.pomodoroSession.phase = pomodoroPhaseLongBreak
+			m.pomodoroSession.workCycles = 0
+		} else {
+			m.pomodoroSession.phase = pomodoroPhaseBreak
+		}
+	case pomodoroPhaseBreak, pomodoroPhaseLongBreak:
+		m.pomodoroSession.phase = pomodoroPhaseWork
+	}
+
+	m.startCurrentPomodoroPhaseTimer()
+}
+

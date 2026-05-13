@@ -76,7 +76,7 @@ func (m Model) renderTasksView() string {
 	} else if m.createMode || m.editMode {
 		footer = helpStyle.Render("TASK MODAL | saisir texte | Enter: save | Esc: cancel")
 	} else {
-		footer = helpStyle.Render("j/k: navigate | Tab/Shift+Tab: subtask | Enter: edit | n: new | Shift+N: subtask | a/z (or 1/2): timer | Shift+J/K: move | q: quit")
+		footer = helpStyle.Render("j/k: navigate | Tab/Shift+Tab: subtask | Enter: edit | n: new | Shift+N: subtask | s: start pomodoro | p: break | w: work | Shift+J/K: move | q: quit")
 	}
 	output.WriteString(footer + "\n")
 
@@ -185,7 +185,7 @@ func (m Model) renderFocusView() string {
 	}
 
 	output.WriteString("\n" + borderStyle.Render(strings.Repeat("─", m.width)) + "\n")
-	footer := helpStyle.Render("j/k: choose task | Enter: select | a/z (or 1/2): start timer | t/f/l or ←/→ | q: quit")
+	footer := helpStyle.Render("j/k: choose task | Enter: select | s: start pomodoro | p: break | w: work | t/f/l or ←/→ | q: quit")
 	output.WriteString(footer + "\n")
 
 	return output.String()
@@ -359,7 +359,7 @@ func (m Model) renderTimerOverlayModal() string {
 		bar,
 		"Progress: " + percent,
 		"",
-		helpStyle.Render("Press Esc to stop timer | q to quit application"),
+		helpStyle.Render("Esc: stop timer | p: break | w: work | q: quit"),
 	}, "\n")
 
 	modal := timerModalStyle.Render(content)
@@ -400,4 +400,41 @@ func renderBigTimer(value string) string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+func (m Model) renderPomodoroSelectOverlayModal() string {
+	modal := m.renderPomodoroSelectModal()
+	if m.width <= 0 || m.height <= 0 {
+		return modal
+	}
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modal)
+}
+
+func (m Model) renderPomodoroSelectModal() string {
+	if len(m.pomodoroTypes) == 0 {
+		return modalStyle.Render("Aucun type de pomodoro configure")
+	}
+
+	var rows []string
+	for i, p := range m.pomodoroTypes {
+		prefix := "  "
+		if i == m.pomodoroSelectIdx {
+			prefix = "> "
+		}
+		row := fmt.Sprintf("%s%s  (work:%d break:%d long:%d cycles:%d)", prefix, p.Name, p.WorkDuration, p.BreakDuration, p.LongBreakDuration, p.CyclesBeforeLongBreak)
+		if i == m.pomodoroSelectIdx {
+			row = selectedStyle.Render(row)
+		}
+		rows = append(rows, row)
+	}
+
+	content := strings.Join([]string{
+		headerStyle.Render("Choisir un type de Pomodoro"),
+		"",
+		strings.Join(rows, "\n"),
+		"",
+		helpStyle.Render("j/k ou haut/bas: naviguer | Enter: valider | Esc: annuler"),
+	}, "\n")
+
+	return modalStyle.Render(content)
 }
