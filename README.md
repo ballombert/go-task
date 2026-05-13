@@ -2,8 +2,8 @@
 
 A cross-platform Go application designed to help people with ADHD manage daily tasks, timers, and focus. Based on the original .NET "ConducteurOrchestre" project, gotask provides a lightweight, command-line-first interface with an optional TUI (Terminal User Interface).
 
-![alt text](docs/Images/image.png)
-![alt text](docs/Images/image-1.png)
+![alt text](docs/Images/Pomodoro.png)
+![alt text](docs/Images/Tasks.png)
 ## 🎯 Project Status
 
 **Phase 1: ✅ Closed (Validated)**
