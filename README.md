@@ -205,6 +205,22 @@ task test              # Run all tests
 task test:coverage     # Run with coverage report
 ```
 
+### CI / Release
+
+Une pipeline GitHub Actions est disponible dans [.github/workflows/release.yml](.github/workflows/release.yml).
+
+- Déclenchement release: push d'un tag `v*` (ex: `v1.0.0`)
+- Plateformes buildées: Linux, Windows, macOS
+- Artefacts publiés: binaires `gotask-<os>-amd64` attachés à la GitHub Release
+- Déclenchement manuel possible via `workflow_dispatch`
+
+Exemple de publication d'une release:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
 ### Code quality
 
 ```bash
@@ -273,6 +289,10 @@ Per the project spec, gotask follows these core constraints:
 - [ ] Time tracking analytics
 
 ## 📄 License
+
+This project is licensed under the MIT License.
+
+See [LICENSE](LICENSE).
 
 Based on ConducteurOrchestre concept. See docs/ for original specifications.
 
