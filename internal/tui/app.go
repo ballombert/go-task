@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -45,47 +46,52 @@ type pomodoroSession struct {
 
 // Model represents the application state
 type Model struct {
-	view               View
-	tasks              []*domain.Task
-	timerManager       *timer.Manager
-	rulesEngine        *rules.Engine
-	inboxReader        *storage.InboxReader
-	inboxWriter        *storage.InboxWriter
-	logger             *storage.SQLiteLogger
-	activeTask         *domain.Task
-	selectedIdx        int
-	selectingSubtask   bool
-	selectedSubtaskIdx int
-	width              int
-	height             int
-	editMode           bool
-	moveMode           bool
-	moveOriginIdx      int
-	editBackup         *domain.Task
-	createMode         bool
-	modalInput         string
-	modalError         string
-	modalEditTarget    *domain.Task
-	modalCreateParent  *domain.Task
-	modalDraft         *domain.Task
-	modalFieldIdx      int
-	taskInput          textinput.Model
-	progressBar        progress.Model
-	logsViewport       viewport.Model
-	logsViewportReady  bool
-	logsOffset         int
-	logs               string
-	pomodoroTypes      []config.PomodoroType
-	pomodoroModalOpen  bool
-	pomodoroSelectIdx  int
-	pomodoroSession    *pomodoroSession
-	err                error
+	view                View
+	tasks               []*domain.Task
+	timerManager        *timer.Manager
+	rulesEngine         *rules.Engine
+	inboxReader         *storage.InboxReader
+	inboxWriter         *storage.InboxWriter
+	archiveWriter       *storage.InboxWriter
+	logger              *storage.SQLiteLogger
+	activeTask          *domain.Task
+	selectedIdx         int
+	selectingSubtask    bool
+	selectedSubtaskIdx  int
+	width               int
+	height              int
+	editMode            bool
+	moveMode            bool
+	moveOriginIdx       int
+	deleteConfirmOpen   bool
+	deleteConfirmIdx    int
+	deleteConfirmSubIdx int
+	editBackup          *domain.Task
+	createMode          bool
+	modalInput          string
+	modalError          string
+	modalEditTarget     *domain.Task
+	modalCreateParent   *domain.Task
+	modalDraft          *domain.Task
+	modalFieldIdx       int
+	taskInput           textinput.Model
+	progressBar         progress.Model
+	logsViewport        viewport.Model
+	logsViewportReady   bool
+	logsOffset          int
+	logs                string
+	pomodoroTypes       []config.PomodoroType
+	pomodoroModalOpen   bool
+	pomodoroSelectIdx   int
+	pomodoroSession     *pomodoroSession
+	err                 error
 }
 
 // NewModel creates a new TUI model
 func NewModel(inboxPath string, dbPath string) (*Model, error) {
 	reader := storage.NewInboxReader(inboxPath)
 	writer := storage.NewInboxWriter(inboxPath)
+	archiveWriter := storage.NewInboxWriter(archiveInboxPath(inboxPath))
 
 	tasks, err := reader.ReadTasks()
 	if err != nil {
@@ -107,35 +113,39 @@ func NewModel(inboxPath string, dbPath string) (*Model, error) {
 	cfg, _ := config.LoadFromFile("config.yml")
 
 	return &Model{
-		view:               ViewTasks,
-		tasks:              tasks,
-		timerManager:       timer.NewManager(),
-		rulesEngine:        rules.NewEngine(),
-		inboxReader:        reader,
-		inboxWriter:        writer,
-		logger:             logger,
-		selectedIdx:        0,
-		selectingSubtask:   false,
-		selectedSubtaskIdx: -1,
-		editMode:           false,
-		moveMode:           false,
-		moveOriginIdx:      -1,
-		createMode:         false,
-		modalInput:         "",
-		modalError:         "",
-		modalEditTarget:    nil,
-		modalCreateParent:  nil,
-		modalDraft:         nil,
-		modalFieldIdx:      0,
-		taskInput:          input,
-		progressBar:        bar,
-		logsViewport:       vp,
-		logsViewportReady:  false,
-		logsOffset:         0,
-		pomodoroTypes:      cfg.PomodoroTypes,
-		pomodoroModalOpen:  false,
-		pomodoroSelectIdx:  0,
-		pomodoroSession:    nil,
+		view:                ViewTasks,
+		tasks:               tasks,
+		timerManager:        timer.NewManager(),
+		rulesEngine:         rules.NewEngine(),
+		inboxReader:         reader,
+		inboxWriter:         writer,
+		archiveWriter:       archiveWriter,
+		logger:              logger,
+		selectedIdx:         0,
+		selectingSubtask:    false,
+		selectedSubtaskIdx:  -1,
+		editMode:            false,
+		moveMode:            false,
+		moveOriginIdx:       -1,
+		deleteConfirmOpen:   false,
+		deleteConfirmIdx:    -1,
+		deleteConfirmSubIdx: -1,
+		createMode:          false,
+		modalInput:          "",
+		modalError:          "",
+		modalEditTarget:     nil,
+		modalCreateParent:   nil,
+		modalDraft:          nil,
+		modalFieldIdx:       0,
+		taskInput:           input,
+		progressBar:         bar,
+		logsViewport:        vp,
+		logsViewportReady:   false,
+		logsOffset:          0,
+		pomodoroTypes:       cfg.PomodoroTypes,
+		pomodoroModalOpen:   false,
+		pomodoroSelectIdx:   0,
+		pomodoroSession:     nil,
 	}, nil
 }
 
@@ -214,6 +224,10 @@ func (m Model) View() string {
 		return m.renderPomodoroSelectOverlayModal()
 	}
 
+	if m.deleteConfirmOpen {
+		return m.renderDeleteConfirmOverlayModal()
+	}
+
 	if m.createMode || m.editMode {
 		return m.renderTaskOverlayModal()
 	}
@@ -224,6 +238,10 @@ func (m Model) View() string {
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.pomodoroModalOpen {
 		return m.handlePomodoroModalKey(msg)
+	}
+
+	if m.deleteConfirmOpen {
+		return m.handleDeleteConfirmKey(msg)
 	}
 
 	if msg.String() == "esc" {
@@ -347,6 +365,18 @@ func (m Model) handleTasksKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.openCreateSubtaskModal(m.tasks[m.selectedIdx])
 		return m, nil
+	case "a":
+		m.archiveSelectedTask()
+		return m, nil
+	case "d", "D":
+		m.openDeleteConfirmModal()
+		return m, nil
+	case " ":
+		m.toggleSelectedTaskStatus()
+		if err := m.persistTasks(); err != nil {
+			m.err = err
+		}
+		return m, nil
 	}
 
 	if len(m.tasks) == 0 {
@@ -457,6 +487,122 @@ func (m Model) handleTasksKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+func (m *Model) archiveSelectedTask() {
+	if m.archiveWriter == nil || len(m.tasks) == 0 || m.selectedIdx < 0 || m.selectedIdx >= len(m.tasks) {
+		return
+	}
+	if m.selectingSubtask {
+		return
+	}
+	task := m.tasks[m.selectedIdx]
+	if task == nil {
+		return
+	}
+	if err := m.archiveWriter.AppendTaskTreeSafely(task); err != nil {
+		m.err = err
+		return
+	}
+	// Remove from in-memory list
+	m.tasks = append(m.tasks[:m.selectedIdx], m.tasks[m.selectedIdx+1:]...)
+	if m.selectedIdx >= len(m.tasks) {
+		m.selectedIdx = len(m.tasks) - 1
+	}
+	if m.selectedIdx < 0 && len(m.tasks) > 0 {
+		m.selectedIdx = 0
+	}
+	// Persist new inbox
+	if err := m.persistTasks(); err != nil {
+		m.err = err
+	}
+}
+
+func (m *Model) openDeleteConfirmModal() {
+	if len(m.tasks) == 0 || m.selectedIdx < 0 || m.selectedIdx >= len(m.tasks) {
+		return
+	}
+
+	m.deleteConfirmIdx = m.selectedIdx
+	if m.selectingSubtask && m.selectedSubtaskIdx >= 0 && m.selectedSubtaskIdx < len(m.tasks[m.selectedIdx].Subtasks) {
+		m.deleteConfirmSubIdx = m.selectedSubtaskIdx
+	} else {
+		m.deleteConfirmSubIdx = -1
+	}
+	m.deleteConfirmOpen = true
+}
+
+func (m *Model) closeDeleteConfirmModal() {
+	m.deleteConfirmOpen = false
+	m.deleteConfirmIdx = -1
+	m.deleteConfirmSubIdx = -1
+}
+
+func (m Model) handleDeleteConfirmKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "n", "N":
+		m.closeDeleteConfirmModal()
+		return m, nil
+	case "enter", "y", "Y":
+		m.deleteConfirmedTask()
+		m.closeDeleteConfirmModal()
+		if err := m.persistTasks(); err != nil {
+			m.err = err
+		}
+		return m, nil
+	}
+
+	return m, nil
+}
+
+func (m *Model) deleteConfirmedTask() {
+	if m.deleteConfirmIdx < 0 || m.deleteConfirmIdx >= len(m.tasks) {
+		return
+	}
+
+	if m.deleteConfirmSubIdx >= 0 {
+		parent := m.tasks[m.deleteConfirmIdx]
+		if parent == nil || m.deleteConfirmSubIdx >= len(parent.Subtasks) {
+			return
+		}
+
+		parent.Subtasks = append(parent.Subtasks[:m.deleteConfirmSubIdx], parent.Subtasks[m.deleteConfirmSubIdx+1:]...)
+		m.selectedIdx = m.deleteConfirmIdx
+		m.selectingSubtask = false
+		m.selectedSubtaskIdx = -1
+		if len(parent.Subtasks) > 0 && m.deleteConfirmSubIdx < len(parent.Subtasks) {
+			m.selectingSubtask = true
+			m.selectedSubtaskIdx = m.deleteConfirmSubIdx
+		} else if len(parent.Subtasks) > 0 {
+			m.selectingSubtask = true
+			m.selectedSubtaskIdx = len(parent.Subtasks) - 1
+		}
+		return
+	}
+
+	m.tasks = append(m.tasks[:m.deleteConfirmIdx], m.tasks[m.deleteConfirmIdx+1:]...)
+	if len(m.tasks) == 0 {
+		m.selectedIdx = 0
+		m.selectingSubtask = false
+		m.selectedSubtaskIdx = -1
+		return
+	}
+	if m.deleteConfirmIdx >= len(m.tasks) {
+		m.selectedIdx = len(m.tasks) - 1
+	} else {
+		m.selectedIdx = m.deleteConfirmIdx
+	}
+	m.selectingSubtask = false
+	m.selectedSubtaskIdx = -1
+}
+
+func archiveInboxPath(inboxPath string) string {
+	ext := filepath.Ext(inboxPath)
+	if ext == "" {
+		return inboxPath + ".arch.md"
+	}
+	base := strings.TrimSuffix(inboxPath, ext)
+	return base + ".arch" + ext
 }
 
 func (m *Model) openCreateModal() {
@@ -807,7 +953,10 @@ func (m *Model) cycleSelectedTaskStatus(direction int) {
 }
 
 func (m *Model) toggleSelectedTaskStatus() {
-	task := m.tasks[m.selectedIdx]
+	task := m.selectedTaskStatusTarget()
+	if task == nil {
+		return
+	}
 	now := time.Now()
 
 	switch task.Status {
@@ -824,6 +973,23 @@ func (m *Model) toggleSelectedTaskStatus() {
 		task.Status = domain.StatusPaused
 		task.CompletedAt = nil
 	}
+}
+
+func (m *Model) selectedTaskStatusTarget() *domain.Task {
+	if len(m.tasks) == 0 || m.selectedIdx < 0 || m.selectedIdx >= len(m.tasks) {
+		return nil
+	}
+
+	if !m.selectingSubtask {
+		return m.tasks[m.selectedIdx]
+	}
+
+	subs := m.tasks[m.selectedIdx].Subtasks
+	if m.selectedSubtaskIdx < 0 || m.selectedSubtaskIdx >= len(subs) {
+		return m.tasks[m.selectedIdx]
+	}
+
+	return subs[m.selectedSubtaskIdx]
 }
 
 func (m Model) handleFocusKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -1065,4 +1231,3 @@ func (m *Model) advancePomodoroPhaseAndStartNext() {
 
 	m.startCurrentPomodoroPhaseTimer()
 }
-

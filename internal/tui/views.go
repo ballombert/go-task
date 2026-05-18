@@ -25,16 +25,17 @@ var (
 	priorityLowestStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("31"))  // Blue
 
 	// UI styles
-	titleStyle      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
-	helpStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true)
-	selectedStyle   = lipgloss.NewStyle().Background(lipgloss.Color("237")).Foreground(lipgloss.Color("226"))
-	headerStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39")).Underline(true)
-	borderStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	modalStyle      = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("39")).Padding(0, 1)
-	errorStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
-	timerModalStyle = lipgloss.NewStyle().Border(lipgloss.DoubleBorder()).BorderForeground(lipgloss.Color("42")).Padding(1, 2)
-	timerTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("42"))
-	bigTimerStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("226"))
+	titleStyle        = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
+	helpStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true)
+	selectedStyle     = lipgloss.NewStyle().Background(lipgloss.Color("237")).Foreground(lipgloss.Color("226"))
+	headerStyle       = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39")).Underline(true)
+	borderStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	modalStyle        = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("39")).Padding(0, 1)
+	confirmModalStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("196")).Padding(0, 1)
+	errorStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+	timerModalStyle   = lipgloss.NewStyle().Border(lipgloss.DoubleBorder()).BorderForeground(lipgloss.Color("42")).Padding(1, 2)
+	timerTitleStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("42"))
+	bigTimerStyle     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("226"))
 )
 
 func (m Model) renderTasksView() string {
@@ -76,7 +77,11 @@ func (m Model) renderTasksView() string {
 	} else if m.createMode || m.editMode {
 		footer = helpStyle.Render("TASK MODAL | saisir texte | Enter: save | Esc: cancel")
 	} else {
-		footer = helpStyle.Render("j/k: navigate | Tab/Shift+Tab: subtask | Enter: edit | n: new | Shift+N: subtask | s: start pomodoro | p: break | w: work | Shift+J/K: move | q: quit")
+		footer = strings.Join([]string{
+			helpStyle.Render("Navigation | j/k: navigate | Tab/Shift+Tab: subtask | Space: status | Enter: edit"),
+			helpStyle.Render("Action | n: new | Shift+N: subtask | a: archive root task | d: delete | Shift+J/K: move"),
+			helpStyle.Render("Pomodoro | s: start pomodoro | p: break | w: work | q: quit"),
+		}, "\n")
 	}
 	output.WriteString(footer + "\n")
 
@@ -145,6 +150,44 @@ func (m Model) renderTaskModal() string {
 
 func (m Model) renderTaskOverlayModal() string {
 	modal := m.renderTaskModal()
+	if m.width <= 0 || m.height <= 0 {
+		return modal
+	}
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modal)
+}
+
+func (m Model) renderDeleteConfirmModal() string {
+	title := "Supprimer la tache ?"
+	details := ""
+	if m.deleteConfirmIdx >= 0 && m.deleteConfirmIdx < len(m.tasks) {
+		target := m.tasks[m.deleteConfirmIdx]
+		if target != nil {
+			if m.deleteConfirmSubIdx >= 0 && m.deleteConfirmSubIdx < len(target.Subtasks) {
+				target = target.Subtasks[m.deleteConfirmSubIdx]
+				details = "Sous-tache: " + strings.TrimSpace(target.Description)
+			} else {
+				details = "Tache: " + strings.TrimSpace(target.Description)
+			}
+		}
+	}
+
+	content := strings.Join([]string{
+		headerStyle.Render(title),
+		"",
+		details,
+		"",
+		helpStyle.Render("Enter/y: supprimer | Esc/n: annuler"),
+	}, "\n")
+
+	modal := confirmModalStyle.Render(content)
+	if m.width <= 0 || m.height <= 0 {
+		return modal
+	}
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, modal)
+}
+
+func (m Model) renderDeleteConfirmOverlayModal() string {
+	modal := m.renderDeleteConfirmModal()
 	if m.width <= 0 || m.height <= 0 {
 		return modal
 	}
@@ -227,9 +270,9 @@ func (m Model) formatTaskLine(task *domain.Task, selected bool) string {
 	var line string
 	status := "[ ]"
 	if task.Status == domain.StatusInProgress {
-		status = "[>]"
+		status = "[/]"
 	} else if task.Status == domain.StatusCompleted {
-		status = "[x]"
+		status = "[X]"
 	}
 
 	line = status + " " + task.Description

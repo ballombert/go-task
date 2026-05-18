@@ -221,7 +221,7 @@ func (app *App) handleInboxTop() error {
 		task := activeTasks[i]
 		status := "[ ]"
 		if task.Status == domain.StatusInProgress {
-			status = "[>]"
+			status = "[/]"
 		} else if task.Status == domain.StatusPaused {
 			status = "[ ]"
 		}
@@ -478,7 +478,7 @@ func (app *App) handleFocusSnapshot() error {
 		task := activeTasks[i]
 		status := "[ ]"
 		if task.Status == domain.StatusInProgress {
-			status = "[>]"
+			status = "[/]"
 		}
 		fmt.Printf("%d. %s %s\n", i+1, status, task.Description)
 	}

@@ -25,6 +25,7 @@ func baseModelForTest(t *testing.T) Model {
 
 	tmp := t.TempDir()
 	writer := storage.NewInboxWriter(filepath.Join(tmp, "inbox.md"))
+	archiveWriter := storage.NewInboxWriter(filepath.Join(tmp, "inbox.arch.md"))
 	logger, err := storage.NewSQLiteLogger(filepath.Join(tmp, "test.db"))
 	if err != nil {
 		t.Fatalf("create sqlite logger: %v", err)
@@ -38,6 +39,7 @@ func baseModelForTest(t *testing.T) Model {
 		tasks:             []*domain.Task{},
 		timerManager:      timer.NewManager(),
 		inboxWriter:       writer,
+		archiveWriter:     archiveWriter,
 		logger:            logger,
 		taskInput:         input,
 		progressBar:       progress.New(progress.WithDefaultGradient()),
@@ -210,6 +212,119 @@ func TestModalInvalidDateShowsError(t *testing.T) {
 
 	if out.modalError == "" {
 		t.Fatalf("expected modalError for invalid date")
+	}
+}
+
+func TestSpaceCyclesTaskStatusAndPersists(t *testing.T) {
+	m := baseModelForTest(t)
+	m.tasks = []*domain.Task{{Description: "demo", Status: domain.StatusPaused, Priority: domain.PriorityMedium}}
+	m.selectedIdx = 0
+
+	outModel, _ := m.handleTasksKey(keyRunes(' '))
+	out := outModel.(Model)
+
+	if out.tasks[0].Status != domain.StatusInProgress {
+		t.Fatalf("expected in progress after first space, got %s", out.tasks[0].Status)
+	}
+
+	raw, err := os.ReadFile(out.inboxWriter.FilePath)
+	if err != nil {
+		t.Fatalf("read inbox file: %v", err)
+	}
+	if !strings.Contains(string(raw), "- [/] demo") {
+		t.Fatalf("expected inbox file to use [/] for in-progress tasks, got %q", string(raw))
+	}
+
+	outModel, _ = out.handleTasksKey(keyRunes(' '))
+	out = outModel.(Model)
+
+	if out.tasks[0].Status != domain.StatusCompleted {
+		t.Fatalf("expected completed after second space, got %s", out.tasks[0].Status)
+	}
+
+	raw, err = os.ReadFile(out.inboxWriter.FilePath)
+	if err != nil {
+		t.Fatalf("read inbox file: %v", err)
+	}
+	if !strings.Contains(string(raw), "- [X] demo") {
+		t.Fatalf("expected inbox file to use [X] for completed tasks, got %q", string(raw))
+	}
+}
+
+func TestDeleteConfirmationRemovesTask(t *testing.T) {
+	m := baseModelForTest(t)
+	m.tasks = []*domain.Task{{Description: "demo", Status: domain.StatusPaused, Priority: domain.PriorityMedium}}
+	m.selectedIdx = 0
+
+	outModel, _ := m.handleTasksKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	out := outModel.(Model)
+
+	if !out.deleteConfirmOpen {
+		t.Fatalf("expected delete confirmation modal to open")
+	}
+
+	outModel, _ = out.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	out = outModel.(Model)
+
+	if out.deleteConfirmOpen {
+		t.Fatalf("expected delete confirmation modal to close")
+	}
+	if len(out.tasks) != 0 {
+		t.Fatalf("expected task to be deleted, got %d tasks", len(out.tasks))
+	}
+
+	raw, err := os.ReadFile(out.inboxWriter.FilePath)
+	if err != nil {
+		t.Fatalf("read inbox file: %v", err)
+	}
+	if strings.TrimSpace(string(raw)) != "" {
+		t.Fatalf("expected inbox file to be empty after delete, got %q", string(raw))
+	}
+}
+
+func TestArchiveSelectedRootTaskCopiesTreeAndRemovesFromInbox(t *testing.T) {
+	m := baseModelForTest(t)
+	m.tasks = []*domain.Task{{
+		Description: "Parent task",
+		Status:      domain.StatusPaused,
+		Priority:    domain.PriorityMedium,
+		Subtasks: []*domain.Task{{
+			Description: "Child task",
+			Status:      domain.StatusInProgress,
+			Priority:    domain.PriorityHigh,
+		}},
+	}}
+	m.selectedIdx = 0
+
+	outModel, _ := m.handleTasksKey(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}})
+	out := outModel.(Model)
+
+	// Archive file should contain the tree
+	raw, err := os.ReadFile(out.archiveWriter.FilePath)
+	if err != nil {
+		t.Fatalf("read archive file: %v", err)
+	}
+	content := string(raw)
+
+	if !strings.Contains(content, "- [ ] Parent task") {
+		t.Fatalf("expected root task to be archived")
+	}
+	if !strings.Contains(content, "\n  - [/] Child task") {
+		t.Fatalf("expected subtask to be archived with indentation")
+	}
+
+	// Inbox should be empty
+	if len(out.tasks) != 0 {
+		t.Fatalf("expected original inbox to be empty after archive, got %d tasks", len(out.tasks))
+	}
+
+	// Inbox file should also be empty
+	rawInbox, err := os.ReadFile(out.inboxWriter.FilePath)
+	if err != nil {
+		t.Fatalf("read inbox file: %v", err)
+	}
+	if strings.TrimSpace(string(rawInbox)) != "" {
+		t.Fatalf("expected inbox file to be empty after archive, got: %q", string(rawInbox))
 	}
 }
 

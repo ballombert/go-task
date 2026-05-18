@@ -49,3 +49,35 @@ func TestAppendTasksSafelyPreservesExistingContent(t *testing.T) {
 		t.Fatalf("expected appended task on a new line")
 	}
 }
+
+func TestAppendTaskTreeSafelyPreservesHierarchy(t *testing.T) {
+	tmp := t.TempDir()
+	path := filepath.Join(tmp, "inbox.arch.md")
+
+	w := NewInboxWriter(path)
+	if err := w.AppendTaskTreeSafely(&domain.Task{
+		Description: "Parent task",
+		Status:      domain.StatusPaused,
+		Priority:    domain.PriorityMedium,
+		Subtasks: []*domain.Task{{
+			Description: "Child task",
+			Status:      domain.StatusInProgress,
+			Priority:    domain.PriorityHigh,
+		}},
+	}); err != nil {
+		t.Fatalf("append task tree: %v", err)
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read archived file: %v", err)
+	}
+	content := string(raw)
+
+	if !strings.Contains(content, "- [ ] Parent task") {
+		t.Fatalf("missing root task in archive")
+	}
+	if !strings.Contains(content, "\n  - [/] Child task") {
+		t.Fatalf("missing indented subtask in archive")
+	}
+}

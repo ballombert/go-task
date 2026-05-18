@@ -125,7 +125,7 @@ func parseStatus(line string) domain.Status {
 	if strings.Contains(line, "- [ ]") {
 		return domain.StatusPaused
 	}
-	if strings.Contains(line, "- [>]") {
+	if strings.Contains(line, "- [/]") || strings.Contains(line, "- [>]") {
 		return domain.StatusInProgress
 	}
 	if strings.Contains(line, "- [x]") || strings.Contains(line, "- [X]") {
@@ -304,6 +304,45 @@ func (w *InboxWriter) AppendTasksSafely(tasks []*domain.Task) (int, error) {
 	return count, nil
 }
 
+// AppendTaskTreeSafely appends a task and its subtasks to the target file.
+// It preserves the hierarchy by writing nested subtasks with indentation.
+func (w *InboxWriter) AppendTaskTreeSafely(task *domain.Task) error {
+	if task == nil {
+		return nil
+	}
+
+	file, err := os.OpenFile(w.FilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	needLeadingNewline := false
+	stat, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	if stat.Size() > 0 {
+		last := make([]byte, 1)
+		if _, err := file.ReadAt(last, stat.Size()-1); err == nil && last[0] != '\n' {
+			needLeadingNewline = true
+		}
+	}
+
+	writer := bufio.NewWriter(file)
+	if needLeadingNewline {
+		if _, err := writer.WriteString("\n"); err != nil {
+			return err
+		}
+	}
+
+	if err := w.writeTaskTree(writer, task, 0); err != nil {
+		return err
+	}
+
+	return writer.Flush()
+}
+
 func (w *InboxWriter) writeTasks(writer *bufio.Writer, tasks []*domain.Task, indent int) {
 	indentStr := strings.Repeat("  ", indent)
 	for _, task := range tasks {
@@ -316,12 +355,27 @@ func (w *InboxWriter) writeTasks(writer *bufio.Writer, tasks []*domain.Task, ind
 	}
 }
 
+func (w *InboxWriter) writeTaskTree(writer *bufio.Writer, task *domain.Task, indent int) error {
+	indentStr := strings.Repeat("  ", indent)
+	if _, err := writer.WriteString(w.taskToLine(task, indentStr) + "\n"); err != nil {
+		return err
+	}
+
+	for _, subtask := range task.Subtasks {
+		if err := w.writeTaskTree(writer, subtask, indent+1); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (w *InboxWriter) taskToLine(task *domain.Task, indent string) string {
 	checkbox := "- [ ]"
 	if task.Status == domain.StatusInProgress {
-		checkbox = "- [>]"
+		checkbox = "- [/]"
 	} else if task.Status == domain.StatusCompleted {
-		checkbox = "- [x]"
+		checkbox = "- [X]"
 	}
 
 	line := indent + checkbox + " " + task.Description

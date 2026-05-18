@@ -73,7 +73,9 @@ Par défaut, le serveur écrit dans `logs\conducteur-orchestre.log`. La vue `Log
 | Global | `←` / `→` | Changer d'écran |
 | Taches | `J` / `K` | Descendre / monter dans la liste active |
 | Taches | `Tab` / `Shift+Tab` | Basculer entre la tâche racine et les sous-tâches du détail |
+| Taches | `Espace` | Faire défiler le statut de la tâche: `[ ]` → `[/]` → `[X]` |
 | Taches | `1` / `2` | Lancer le preset Pomodoro 1 ou 2 sur la tâche ou sous-tâche sélectionnée |
+| Taches | `d` | Supprimer la tâche sélectionnée après confirmation |
 | Taches | `Maj+J` / `Maj+K` | Entrer en mode déplacement |
 | Taches | `Entrée` | Ouvrir l'édition de la tâche sélectionnée |
 | Taches | `N` | Créer une nouvelle tâche |
